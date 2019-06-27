@@ -930,6 +930,21 @@ sub print_dnsmasq_dhcp_conf {
 	&mv ($file_dnsmasq_dhcp, "/etc/dnsmasq.d/");
 }
 
+sub enable_pihole_dhcp {
+	my $domain = $settings{'domain'};
+	my $net = $settings{'net'};
+	my $dhcp_lease_time = $settings{'dhcp_lease_time'} || $default_dhcp_lease;
+	my $lease_time_hrs = int(($dhcp_lease_time/3600)+0.5);
+	my $gw = $net . "." . $settings{'gateway'};
+	my $self = $net . "." . $settings{'self-address'};
+	my $dyn_lo = $net . "." . $settings{'dyn_lo'};
+	my $dyn_hi = $net . "." . $settings{'dyn_hi'};
+	if(-e '/etc/dnsmasq.d/01-pihole.conf'){
+		#syntax sudo pihole -a enabledhcp from_ip to_ip router_ip lease_time_in_hrs domain enable_ipv6 enable_rapid_commit_dhcp
+		system("sudo pihole -a enabledhcp $dyn_lo $dyn_hi $gw $lease_time_hrs $domain true true");
+	}
+}
+
 sub print_hosts_dnsmasq {
 	my $file = shift;
 
@@ -1011,8 +1026,8 @@ sub print_dnsmasq_ipv6_conf {
 
 sub generate_dhcp_settings {
 	if ($use_dnsmasq_dhcp) {
-		&print_dnsmasq_dhcp_conf();
-		&print_dnsmasq_ipv6_conf();
+		#&print_dnsmasq_dhcp_conf();
+		#&print_dnsmasq_ipv6_conf();
 	} else {
 		&print_dhcpd_conf();
 	}
@@ -1031,8 +1046,9 @@ sub generate_dns_settings {
 sub generate_files {
 
 	&get_db_settings();
-	&print_dnsmasq_common_conf() if ($dnsmasq_in_use);
-	&generate_dhcp_settings();
+	#&print_dnsmasq_common_conf() if ($dnsmasq_in_use);
+	#&generate_dhcp_settings();
+	&enable_pihole_dhcp();
 	&generate_dns_settings();
 	&change_network_manager_settings ();
 	&print_resolver ();
@@ -1203,22 +1219,22 @@ sub restart_named {
 	}
 }
 
-sub restart_dnsmasq {
+sub restart_pihole {
 	my $cmd = "";
-	if (&should_run_at_boot("dnsmasq")) {
+	if (&should_run_at_boot("pihole-FTL")) {
 		if ($platform eq "fedora") {
-			$cmd = "systemctl restart dnsmasq.service >& /dev/null";
+			$cmd = "systemctl restart pihole-FTL.service >& /dev/null";
 		} else {
-			$cmd = "service dnsmasq restart >/dev/null 2>&1";
+			$cmd = "service pihole-FTL restart >/dev/null 2>&1";
 		}
 
 		if (system($cmd)) {
-			&log ("cannot restart dnsmasq");
+			&log ("cannot restart pihole");
 		} else {
-			&log ("dnsmasq restarted successfully");
+			&log ("pihole restarted successfully");
 		}
 	} else {
-		&log("dnsmasq not enabled");
+		&log("pihole not enabled");
 	}
 }
 
@@ -1291,10 +1307,10 @@ sub do_hup_action {
 	&log ("caught SIGHUP: executing programmed action.");
 
 	&db_connect();
-        &generate_files ();
-	&restart_named () unless $use_dnsmasq_dns;
-	&restart_dhcpd () unless $use_dnsmasq_dhcp;
-	&restart_dnsmasq () if $dnsmasq_in_use;
+    &generate_files ();
+	#&restart_named () unless $use_dnsmasq_dns;
+	#&restart_dhcpd () unless $use_dnsmasq_dhcp;
+	&restart_pihole () if $dnsmasq_in_use;
 	&db_disconnect ();
 	&log ("services restarted");
 }
@@ -1515,9 +1531,9 @@ sub main {
 	# every reboot
 	&db_connect ();
 
-        &restart_named () unless ($use_dnsmasq_dns);
-	&restart_dhcpd () unless ($use_dnsmasq_dhcp);
-	&restart_dnsmasq () if $dnsmasq_in_use;
+	#&restart_named () unless ($use_dnsmasq_dns);
+	#&restart_dhcpd () unless ($use_dnsmasq_dhcp);
+	&restart_pihole () if $dnsmasq_in_use;
 
 	&generate_files ();
 
